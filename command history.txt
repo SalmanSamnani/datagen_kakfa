@@ -1,45 +1,67 @@
+
+Kafka + Docker Project Commands Guide
+=====================================
+
+Step 1: Prepare Plugin Directory & Install Kafka Connect Datagen Connector
+--------------------------------------------------------------------------
 mkdir -p plugins
-docker run --rm -v "${PWD}\plugins:/plugins" confluentinc/cp-kafka-connect:7.4.0 bash -c "confluent-hub install --no-prompt confluentinc/kafka-connect-datagen:latest --component-dir /plugins"
 
-cd '.\My work\Kafka_projects\datagen_kafka\'
-
-docker-compose down
-docker-compose up -d --build
-docker ps
+docker run --rm -v "${PWD}/plugins:/plugins" \
+  confluentinc/cp-kafka-connect:7.4.0 \
+  bash -c "confluent-hub install --no-prompt confluentinc/kafka-connect-datagen:latest --component-dir /plugins"
 
 
-<!-- Force Docker to Rebuild Container -->
+Step 2: Navigate to Project Directory
+-------------------------------------
+cd './My work/Kafka_projects/datagen_kafka/'
 
+
+Step 3: Run Docker Containers
+-----------------------------
+# Start fresh (clean build)
 docker-compose down --volumes --remove-orphans
 docker-compose up -d --build
 
-<!-- Run a Kafka CLI test -->
+# Check running containers
+docker ps
 
+
+Step 4: Kafka Broker Test – Create & Use Topic
+----------------------------------------------
+# Enter Kafka broker container
 docker exec -it datagen_kafka-kafka-broker-1-1 bash
+
+# Create topic
 kafka-topics --bootstrap-server localhost:9092 --create --topic test-topic --partitions 1 --replication-factor 1
+
+# List all topics
 kafka-topics --bootstrap-server localhost:9092 --list
 
-Send a test message
+# Send a message to topic
 kafka-console-producer --broker-list localhost:9092 --topic test-topic
 hello from kafka
-press ctrl + C
+# Press Ctrl + C to exit
 
-Consume the message
+# Consume message from topic
 kafka-console-consumer --bootstrap-server localhost:9092 --topic test-topic --from-beginning --timeout-ms 5000
 
 
-docker exec -it datagen_kafka-kafka-broker-1-1 bash
+Step 5: Create Internal Kafka Connect Topics
+--------------------------------------------
 kafka-topics --create --topic connect-configs --bootstrap-server localhost:9092 --replication-factor 1 --partitions 1
-
 kafka-topics --create --topic connect-offsets --bootstrap-server localhost:9092 --replication-factor 1 --partitions 1
-
 kafka-topics --create --topic connect-statuses --bootstrap-server localhost:9092 --replication-factor 1 --partitions 1
 
-
+# Describe topic (example)
 docker exec -it <kafka-container-id> kafka-topics --bootstrap-server kafka-broker-1:9092 --describe --topic connect-offsets
 
+
+Step 6: Kafka Connect – Test Local Connector
+--------------------------------------------
+# List available connectors
 curl http://localhost:8083/connectors
 
+# Register a FileStreamSource connector
 curl -X POST http://localhost:8083/connectors \
   -H "Content-Type: application/json" \
   -d '{
@@ -53,9 +75,12 @@ curl -X POST http://localhost:8083/connectors \
   }'
 
 
-<!-- postgres -->
-
+Step 7: PostgreSQL Setup
+------------------------
+# Connect to Postgres container
 docker exec -it postgres psql -U postgres -d testdb
+
+# Create and insert data into 'users' table
 CREATE TABLE users (
   id SERIAL PRIMARY KEY,
   name VARCHAR(100),
@@ -67,6 +92,8 @@ INSERT INTO users (name, email) VALUES
 ('Bob', 'bob@example.com');
 
 
+Step 8: Register JDBC Source Connector for Postgres (PowerShell)
+-----------------------------------------------------------------
 $headers = @{
   "Content-Type" = "application/json"
 }
@@ -89,6 +116,10 @@ $body = '{
 Invoke-RestMethod -Uri "http://localhost:8083/connectors" -Method Post -Headers $headers -Body $body
 
 
+Step 9: Validate Topics and Data Flow
+-------------------------------------
+# List all Kafka topics
 docker exec -it datagen_kafka-kafka-broker-1-1 kafka-topics --bootstrap-server localhost:9092 --list
-docker exec -it datagen_kafka-kafka-broker-1-1 kafka-console-consumer --bootstrap-server localhost:9092 --topic jdbc-users --from-beginning
 
+# Consume records from the 'jdbc-users' topic
+docker exec -it datagen_kafka-kafka-broker-1-1 kafka-console-consumer --bootstrap-server localhost:9092 --topic jdbc-users --from-beginning
