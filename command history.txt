@@ -1,0 +1,94 @@
+mkdir -p plugins
+docker run --rm -v "${PWD}\plugins:/plugins" confluentinc/cp-kafka-connect:7.4.0 bash -c "confluent-hub install --no-prompt confluentinc/kafka-connect-datagen:latest --component-dir /plugins"
+
+cd '.\My work\Kafka_projects\datagen_kafka\'
+
+docker-compose down
+docker-compose up -d --build
+docker ps
+
+
+<!-- Force Docker to Rebuild Container -->
+
+docker-compose down --volumes --remove-orphans
+docker-compose up -d --build
+
+<!-- Run a Kafka CLI test -->
+
+docker exec -it datagen_kafka-kafka-broker-1-1 bash
+kafka-topics --bootstrap-server localhost:9092 --create --topic test-topic --partitions 1 --replication-factor 1
+kafka-topics --bootstrap-server localhost:9092 --list
+
+Send a test message
+kafka-console-producer --broker-list localhost:9092 --topic test-topic
+hello from kafka
+press ctrl + C
+
+Consume the message
+kafka-console-consumer --bootstrap-server localhost:9092 --topic test-topic --from-beginning --timeout-ms 5000
+
+
+docker exec -it datagen_kafka-kafka-broker-1-1 bash
+kafka-topics --create --topic connect-configs --bootstrap-server localhost:9092 --replication-factor 1 --partitions 1
+
+kafka-topics --create --topic connect-offsets --bootstrap-server localhost:9092 --replication-factor 1 --partitions 1
+
+kafka-topics --create --topic connect-statuses --bootstrap-server localhost:9092 --replication-factor 1 --partitions 1
+
+
+docker exec -it <kafka-container-id> kafka-topics --bootstrap-server kafka-broker-1:9092 --describe --topic connect-offsets
+
+curl http://localhost:8083/connectors
+
+curl -X POST http://localhost:8083/connectors \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "local-file-source",
+    "config": {
+      "connector.class": "FileStreamSource",
+      "tasks.max": "1",
+      "file": "/tmp/test.txt",
+      "topic": "file-topic"
+    }
+  }'
+
+
+<!-- postgres -->
+
+docker exec -it postgres psql -U postgres -d testdb
+CREATE TABLE users (
+  id SERIAL PRIMARY KEY,
+  name VARCHAR(100),
+  email VARCHAR(100)
+);
+
+INSERT INTO users (name, email) VALUES
+('Alice', 'alice@example.com'),
+('Bob', 'bob@example.com');
+
+
+$headers = @{
+  "Content-Type" = "application/json"
+}
+
+$body = '{
+  "name": "jdbc-source-users",
+  "config": {
+    "connector.class": "io.confluent.connect.jdbc.JdbcSourceConnector",
+    "connection.url": "jdbc:postgresql://postgres:5432/testdb",
+    "connection.user": "postgres",
+    "connection.password": "postgres",
+    "mode": "incrementing",
+    "incrementing.column.name": "id",
+    "topic.prefix": "jdbc-",
+    "table.whitelist": "users",
+    "poll.interval.ms": 10000
+  }
+}'
+
+Invoke-RestMethod -Uri "http://localhost:8083/connectors" -Method Post -Headers $headers -Body $body
+
+
+docker exec -it datagen_kafka-kafka-broker-1-1 kafka-topics --bootstrap-server localhost:9092 --list
+docker exec -it datagen_kafka-kafka-broker-1-1 kafka-console-consumer --bootstrap-server localhost:9092 --topic jdbc-users --from-beginning
+
